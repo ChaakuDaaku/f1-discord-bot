@@ -1,14 +1,17 @@
 from datetime import datetime, timezone
 import os
+import asyncio
 import json
 from os.path import join, dirname
 from dotenv import load_dotenv
 
 import discord
+from discord import PartialEmoji
 from discord.ext import commands, tasks
+from discord.abc import GuildChannel
 from discord.ui import View, Button
 from icalendar import Calendar, Event
-from typing import List
+from typing import List, Coroutine
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -50,36 +53,35 @@ drivers = [
 
 
 class DriverButton(Button["MyView"]):
-    def __init__(self, label, custom_id, emoji):
+    def __init__(self, label:str, custom_id:str, emoji:str):
         super().__init__(
             style=discord.ButtonStyle.secondary,
             label=label,
             custom_id=custom_id,
-            emoji=emoji,
+            emoji=PartialEmoji.from_str(emoji),
         )
         self.label = label
         self.custom_id = custom_id
-        self.emoji = emoji
+        self.emoji = PartialEmoji.from_str(emoji)
 
     async def callback(self, interaction: discord.Interaction):
         assert self.view is not None
         view: MyView = self.view
-        print("hey there")
         custom_id = interaction.data["custom_id"]
-        poll_name, option = custom_id.split(":")
+        position, driver = custom_id.split(":")
         user_id = interaction.user.id
-        polls[poll_name]["votes"][user_id] = option
-        print(polls[poll_name])
+        polls[position]["votes"][user_id] = driver
+        print(polls[position])
         # await interaction.response.defer()
-        view.stop()
-        await interaction.response.send_message(
-            f"Your vote has been recorded.", ephemeral=True, view=view
+        # view.stop()
+        await interaction.response.edit_message(
+            content=f"You voted {driver} for {position}.", view=view
         )
 
 
 class MyView(View):
     children: List[DriverButton]
-
+    timeout = None
     def __init__(self, poll_name):
         super().__init__()
         for driver in drivers:
@@ -95,7 +97,7 @@ class MyView(View):
 # Function to read F1 calendar and get start time of FP1 and Qualifying rounds
 def get_round_start_time():
     CALENDAR_URL = open(
-        ".\\f1-calendar_p1_qualifying.ics",
+        "./f1-calendar_p1_qualifying.ics",
         "r",
     )
     cal = Calendar.from_ical(CALENDAR_URL.read())
@@ -110,12 +112,13 @@ def get_round_start_time():
 # Function to create polls
 async def create_polls():
     global polls
-    for i in range(1, 6):
-        poll_name = f"P{i}"
-        polls[poll_name] = {"question": f"Who will win P{i}?", "votes": {}}
-        view = MyView(poll_name)
-        channel = bot.get_channel(int(os.environ.get("CHANNEL_ID")))
-        await channel.send(f'**{polls[poll_name]["question"]}**', view=view)
+    channel: GuildChannel = bot.get_channel(int(os.environ.get("CHANNEL_ID")))
+    views: List[Coroutine] = []
+    for i in range(5):
+        poll_name = f"P{i+1}"
+        polls[poll_name] = {"question": f"Who will win {poll_name}?", "votes": {}}
+        views.append(channel.send(content=f'**{polls[poll_name]["question"]}**', view=MyView(poll_name)))
+    asyncio.gather(*views)
 
 
 # Function to close polls and generate results

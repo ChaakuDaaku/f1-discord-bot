@@ -12,7 +12,7 @@ python runme.py
 ```
 
 ## TODO
-1. Fix the button interaction failure
+1. ~~Fix the button interaction failure~~
 1. Change the messages
 1. Improve the JSON output
 1. Figure out a better way to export the results
