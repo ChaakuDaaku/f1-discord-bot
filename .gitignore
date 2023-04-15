@@ -1,3 +1,4 @@
 .env
 poll_results.json
 scratchpad.txt
+poetry.lock
