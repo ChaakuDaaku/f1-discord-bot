@@ -4,6 +4,7 @@ import asyncio
 import json
 from os.path import join, dirname
 from dotenv import load_dotenv
+import re
 
 import discord
 from discord import PartialEmoji
@@ -26,7 +27,7 @@ polls = {}
 poll_results = {}
 FP1_START = []
 QUALI_START = []
-LOCATION = []
+LOCATIONS = []
 
 drivers = [
     {"emocode": "<:VER:1094758174780817549>", "name": "VER"},
@@ -74,8 +75,8 @@ class DriverButton(Button["MyView"]):
         print(polls[position])
         # await interaction.response.defer()
         # view.stop()
-        await interaction.response.edit_message(
-            content=f"You voted {driver} for {position}.", view=view
+        await interaction.response.send_message(
+            content=f"You voted {driver} for {position}.", ephemeral= True
         )
 
 
@@ -106,16 +107,16 @@ def get_round_start_time():
             FP1_START.append(event["DTSTART"].dt)
         if "Qualifying" in event["SUMMARY"]:
             QUALI_START.append(event["DTSTART"].dt)
-        LOCATION.append(event["LOCATION"])
+            LOCATIONS.append(re.findall("[A-z ]{11,}", event["SUMMARY"])[-1])
 
 
 # Function to create polls
-async def create_polls():
+async def create_polls(location):
     global polls
     channel: GuildChannel = bot.get_channel(int(os.environ.get("CHANNEL_ID")))
     views: List[Coroutine] = []
     for i in range(5):
-        poll_name = f"P{i+1}"
+        poll_name = f"P{i+1} in {location}"
         polls[poll_name] = {"question": f"Who will win {poll_name}?", "votes": {}}
         views.append(channel.send(content=f'**{polls[poll_name]["question"]}**', view=MyView(poll_name)))
     asyncio.gather(*views)
@@ -137,9 +138,10 @@ def close_polls():
 # Task to check if it's time to create or close polls
 @tasks.loop(seconds=10)
 async def poll_task():
-    for fp1_start_time, qualifying_start_time in zip(FP1_START, QUALI_START):
+    print("Understood! We are checking...")
+    for fp1_start_time, qualifying_start_time, location in zip(FP1_START, QUALI_START, LOCATIONS):
         if fp1_start_time <= datetime.now(timezone.utc) < qualifying_start_time:
-            await create_polls()
+            await create_polls(location)
         elif datetime.now(timezone.utc) >= qualifying_start_time:
             close_polls()
             poll_task.cancel()
