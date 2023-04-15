@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands, tasks
 from discord.ui import View, Button
 from icalendar import Calendar, Event
+from typing import List
 
 dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
@@ -48,36 +49,47 @@ drivers = [
 ]
 
 
-class MyView(View):
-    def __init__(self, poll_name):
-        super().__init__()
-        for driver in drivers:
-            self.add_item(
-                Button(
-                    label=driver["name"],
-                    custom_id=f'{poll_name}:{driver["name"]}',
-                    emoji=driver["emocode"],
-                )
-            )
+class DriverButton(Button["MyView"]):
+    def __init__(self, label, custom_id, emoji):
+        super().__init__(
+            style=discord.ButtonStyle.secondary,
+            label=label,
+            custom_id=custom_id,
+            emoji=emoji,
+        )
+        self.label = label
+        self.custom_id = custom_id
+        self.emoji = emoji
 
-    async def interaction_check(self, interaction):
-        if interaction.user != self.ctx.author:
-            await interaction.response.send_message(
-                "You are not allowed to use this button!", ephemeral=True
-            )
-            return False
-        return True
-
-    async def on_button_click(self, interaction: discord.Interaction):
+    async def callback(self, interaction: discord.Interaction):
+        assert self.view is not None
+        view: MyView = self.view
         print("hey there")
         custom_id = interaction.data["custom_id"]
         poll_name, option = custom_id.split(":")
         user_id = interaction.user.id
         polls[poll_name]["votes"][user_id] = option
         print(polls[poll_name])
+        # await interaction.response.defer()
+        view.stop()
         await interaction.response.send_message(
-            f"Your vote has been recorded.", ephemeral=True
+            f"Your vote has been recorded.", ephemeral=True, view=view
         )
+
+
+class MyView(View):
+    children: List[DriverButton]
+
+    def __init__(self, poll_name):
+        super().__init__()
+        for driver in drivers:
+            self.add_item(
+                DriverButton(
+                    label=driver["name"],
+                    custom_id=f'{poll_name}:{driver["name"]}',
+                    emoji=driver["emocode"],
+                )
+            )
 
 
 # Function to read F1 calendar and get start time of FP1 and Qualifying rounds
