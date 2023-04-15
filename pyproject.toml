@@ -2,9 +2,11 @@
 name = "f1-discord-bot"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
+authors = ["chaakudaaku <vivekbpatil19@gmail.com>"]
+maintainers = ["Saurabh Wanivadekar <aw14saurabh@hotmail.com>"]
 readme = "README.md"
 packages = [{include = "f1_discord_bot"}]
+license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.11"
