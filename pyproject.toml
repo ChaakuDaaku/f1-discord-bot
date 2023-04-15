@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "f1-discord-bot"
+version = "0.1.0"
+description = ""
+authors = ["chaakudaaku <vivekbpatil19@gmail.com>"]
+maintainers = ["Saurabh Wanivadekar <aw14saurabh@hotmail.com>"]
+readme = "README.md"
+packages = [{include = "f1_discord_bot"}]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+"discord.py" = "^2.2.2"
+icalendar = "^5.0.5"
+python-dotenv = "^1.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
