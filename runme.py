@@ -9,7 +9,7 @@ from discord.ext import commands, tasks
 from discord.ui import View, Button
 from icalendar import Calendar, Event
 
-dotenv_path = join(dirname(__file__), '.env')
+dotenv_path = join(dirname(__file__), ".env")
 load_dotenv(dotenv_path)
 
 intents = discord.Intents.default()
@@ -83,7 +83,7 @@ class MyView(View):
 # Function to read F1 calendar and get start time of FP1 and Qualifying rounds
 def get_round_start_time():
     CALENDAR_URL = open(
-        "D:\\Projects\\Formula 1\\Predictions\\f1-pollbot\\f1-calendar_p1_qualifying.ics",
+        ".\\f1-calendar_p1_qualifying.ics",
         "r",
     )
     cal = Calendar.from_ical(CALENDAR_URL.read())
