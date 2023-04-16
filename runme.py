@@ -1,155 +1,170 @@
-from datetime import datetime, timezone
 import os
 import asyncio
 import json
 from os.path import join, dirname
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 import discord
-from discord import PartialEmoji
-from discord.ext import commands, tasks
-from discord.abc import GuildChannel
-from discord.ui import View, Button
+import discord.ext.commands as commands
+import discord.ext.tasks as tasks
+from discord import SelectOption, Emoji, Guild, Interaction
+from discord.ui import View, Select
 from icalendar import Calendar, Event
-from typing import List, Coroutine
+from typing import List, Tuple, Optional
 
-dotenv_path = join(dirname(__file__), ".env")
+dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
-intents = discord.Intents.default()
-intents.members = True
+#Calendar dict to sort the mess
+f1_calendar = {}
+with open('./Formula_1.ics', 'r') as F1_CAL:
+    cal: Calendar = Calendar.from_ical(F1_CAL.read())
+    wknd_event: Event
+    for wknd_event in cal.walk('VEVENT'):
+        loc, typ = wknd_event['SUMMARY'].split(' - ')
+        tim:datetime = wknd_event['DTSTART'].dt
+        loc:str = loc[2:].strip()
+        typ:str = typ.strip()
+        if typ in ['Practice 1', 'Qualifying']:
+            if loc not in f1_calendar:
+                f1_calendar[loc] = {typ:tim}
+            else:
+                f1_calendar[loc][typ] = tim
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+events : List[str] = []
+bot_start : List[datetime] = []
+view_end  : List[datetime] = []
+for loc in f1_calendar:
+    events.append(loc)
+    bot_start.append(f1_calendar[loc]['Practice 1'])
+    view_end.append(f1_calendar[loc]['Qualifying'])
+bot_start_dates = [day.date() for day in bot_start]
 
-# Global variables to store poll data
-polls = {}
 poll_results = {}
-FP1_START = []
-QUALI_START = []
-LOCATION = []
-
-drivers = [
-    {"emocode": "<:VER:1094758174780817549>", "name": "VER"},
-    {"emocode": "<:PER:1094758171383439371>", "name": "PER"},
-    {"emocode": "<:ALO:1094758169516982292>", "name": "ALO"},
-    {"emocode": "<:STR:1094758161132552192>", "name": "STR"},
-    {"emocode": "<:LEC:1094758144057544774>", "name": "LEC"},
-    {"emocode": "<:SAI:1094758163116458125>", "name": "SAI"},
-    {"emocode": "<:HAM:1094758166119583774>", "name": "HAM"},
-    {"emocode": "<:RUS:1094758157663879209>", "name": "RUS"},
-    {"emocode": "<:NOR:1094758149195575406>", "name": "NOR"},
-    {"emocode": "<:PIA:1094758136889479310>", "name": "PIA"},
-    {"emocode": "<:BOT:1094758141792624733>", "name": "BOT"},
-    {"emocode": "<:ZHO:1094758130442838127>", "name": "ZHO"},
-    {"emocode": "<:HUL:1094758147467526164>", "name": "HUL"},
-    {"emocode": "<:MAG:1094758124470157423>", "name": "MAG"},
-    {"emocode": "<:ALB:1094758120959512627>", "name": "ALB"},
-    {"emocode": "<:SAR:1094758118849781830>", "name": "SAR"},
-    {"emocode": "<:TSU:1094758128077250591>", "name": "TSU"},
-    {"emocode": "<:DEV:1094758115376893994>", "name": "DEV"},
-    {"emocode": "<:OCO:1094758139133448242>", "name": "OCO"},
-    {"emocode": "<:GAS:1094758133794082957>", "name": "GAS"},
-]
 
 
-class DriverButton(Button["MyView"]):
-    def __init__(self, label:str, custom_id:str, emoji:str):
+class DriverSelect(Select):
+    def __init__(self, *, custom_id: str = ..., placeholder: Optional[str] = None, min_values: int = 1, max_values: int = 1, options: List[SelectOption] = ..., disabled: bool = False, row: Optional[int] = None) -> None:
         super().__init__(
-            style=discord.ButtonStyle.secondary,
-            label=label,
             custom_id=custom_id,
-            emoji=PartialEmoji.from_str(emoji),
+            placeholder=placeholder,
+            min_values=min_values,
+            max_values=max_values,
+            options=options,
+            disabled=disabled,
+            row=row
         )
-        self.label = label
         self.custom_id = custom_id
-        self.emoji = PartialEmoji.from_str(emoji)
+        self.placeholder = placeholder
+        self.min_values = min_values
+        self.max_values = max_values
+        self.options = options
+        self.disabled = disabled
+        self.row = row
 
-    async def callback(self, interaction: discord.Interaction):
+    async def callback(self, interaction: Interaction) -> None:
         assert self.view is not None
-        view: MyView = self.view
-        custom_id = interaction.data["custom_id"]
-        position, driver = custom_id.split(":")
-        user_id = interaction.user.id
-        polls[position]["votes"][user_id] = driver
-        print(polls[position])
-        # await interaction.response.defer()
-        # view.stop()
-        await interaction.response.edit_message(
-            content=f"You voted {driver} for {position}.", view=view
-        )
+        user_name = interaction.user.name
+        position = interaction.data['custom_id']
+        driver = interaction.data['values'][0]
+        print(f'{user_name} chose {driver} for {position}')
+        if user_name not in poll_results:
+            poll_results[user_name] = {position: driver}
+        else:
+            poll_results[user_name][position] = driver
+        # await asyncio.sleep(1)
+        # await interaction.response.send_message(content=f'You chose {driver} for {position}', ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
 
 
-class MyView(View):
-    children: List[DriverButton]
-    timeout = None
-    def __init__(self, poll_name):
+class PollView(View):
+    def __init__(self, *, timeout: Optional[float] = 180, emojis: Tuple[Emoji, ...]):
+        super().__init__(timeout=timeout)
+        self.driver_options = [self.option_gen(emoji) for emoji in emojis]
+        self.add_item(DriverSelect(custom_id='P1', placeholder='Predict P1', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=0))
+        self.add_item(DriverSelect(custom_id='P2', placeholder='Predict P2', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=1))
+        self.add_item(DriverSelect(custom_id='P3', placeholder='Predict P3', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=2))
+        self.add_item(DriverSelect(custom_id='P4', placeholder='Predict P4', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=3))
+        self.add_item(DriverSelect(custom_id='P5', placeholder='Predict P5', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=4))
+
+    def option_gen(self, emoji: Emoji) -> SelectOption:
+        return SelectOption(label=emoji.name, value=emoji.name, emoji=emoji)
+
+    async def on_timeout(self) -> None:
+        print("View Timeout")
+        self.stop()
+        selects: DriverSelect
+        for selects in self.children:
+            selects.disabled = True
+            print(selects.disabled)
+        print(poll_results)
+        with open('./poll_results.json', 'w') as f:
+            json.dump(poll_results, f)
+        return await super().on_timeout()
+
+class F1PollBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.all()
+        intents.message_content = True
+        self.command_prefix = '!'
+        super().__init__(command_prefix=self.command_prefix, intents=intents)
+
+    async def on_ready(self):
+        await self.add_cog(Poller(self))
+        print(f'Logged in as {self.user} (ID: {self.user.id})')
+        print('------')
+
+
+class Poller(commands.Cog):
+    def __init__(self, bot:F1PollBot):
         super().__init__()
-        for driver in drivers:
-            self.add_item(
-                DriverButton(
-                    label=driver["name"],
-                    custom_id=f'{poll_name}:{driver["name"]}',
-                    emoji=driver["emocode"],
-                )
-            )
+        self.bot = bot
+        self.time = datetime.now(timezone.utc).time()
+        self.date = datetime.now(timezone.utc).date()
+        self.channel = self.bot.get_channel(int(os.environ.get("CHANNEL_ID")))
+        self.guild: Guild = self.bot.guilds[0]
+        self.emojis = self.guild.emojis[:10:-1]
+        self.event = str('')
+        self.message_sent = False
+        self.poll_task.start()
+
+    def cog_unload(self) -> None:
+        self.poll_task.cancel()
+
+    @tasks.loop(seconds=10, reconnect=True)
+    async def poll_task(self):
+        print("task loop started")
+        self.date = datetime.now(timezone.utc).date()
+        self.time = datetime.now(timezone.utc).time()
+        if self.date not in bot_start_dates:
+            print(f'No race this weekend')
+            return
+        else:
+            for i, dt in enumerate(bot_start):
+                if self.date == dt.date():
+                    if self.time < dt.time():
+                        print(f'Not time yet. Poll starting at {dt.time()}')
+                        self.poll_task.change_interval(time=dt.time())
+                        return
+                    elif (self.time < view_end[i].time()) and not self.message_sent:
+                        assert self.channel is not None
+                        print("Time for predictions!")
+                        self.event = events[i]
+                        self.duration: float = (view_end[i] - bot_start[i]).total_seconds()
+                        print(f"Predictions closing in {self.duration} seconds")
+                        self.poll_view = PollView(timeout=self.duration, emojis=self.emojis)
+                        self.poll_task.change_interval(time=view_end[i].time())
+                        self.message_sent = True
+                        break
+                    elif datetime.now(timezone.utc) > view_end[i]:
+                        await self.poll_view.on_timeout()
+                        self.message_sent = False
+                        self.poll_task.change_interval(seconds=10)
+            if self.message_sent:
+                await self.channel.send(content=f'{self.event} - Predictions', view=self.poll_view)
+        return
 
 
-# Function to read F1 calendar and get start time of FP1 and Qualifying rounds
-def get_round_start_time():
-    CALENDAR_URL = open(
-        "./f1-calendar_p1_qualifying.ics",
-        "r",
-    )
-    cal = Calendar.from_ical(CALENDAR_URL.read())
-    for event in cal.walk("vevent"):
-        if "FP1" in event["SUMMARY"]:
-            FP1_START.append(event["DTSTART"].dt)
-        if "Qualifying" in event["SUMMARY"]:
-            QUALI_START.append(event["DTSTART"].dt)
-        LOCATION.append(event["LOCATION"])
-
-
-# Function to create polls
-async def create_polls():
-    global polls
-    channel: GuildChannel = bot.get_channel(int(os.environ.get("CHANNEL_ID")))
-    views: List[Coroutine] = []
-    for i in range(5):
-        poll_name = f"P{i+1}"
-        polls[poll_name] = {"question": f"Who will win {poll_name}?", "votes": {}}
-        views.append(channel.send(content=f'**{polls[poll_name]["question"]}**', view=MyView(poll_name)))
-    asyncio.gather(*views)
-
-
-# Function to close polls and generate results
-def close_polls():
-    global poll_results
-    for poll_name, poll_data in polls.items():
-        poll_results[poll_name] = {}
-        for user_id, vote in poll_data["votes"].items():
-            if vote not in poll_results[poll_name]:
-                poll_results[poll_name][vote] = []
-            poll_results[poll_name][vote].append(user_id)
-    with open("poll_results.json", "w") as f:
-        json.dump(poll_results, f)
-
-
-# Task to check if it's time to create or close polls
-@tasks.loop(seconds=10)
-async def poll_task():
-    for fp1_start_time, qualifying_start_time in zip(FP1_START, QUALI_START):
-        if fp1_start_time <= datetime.now(timezone.utc) < qualifying_start_time:
-            await create_polls()
-        elif datetime.now(timezone.utc) >= qualifying_start_time:
-            close_polls()
-            poll_task.cancel()
-
-
-@bot.event
-async def on_ready():
-    print(f"{bot.user} has connected to Discord!")
-    get_round_start_time()
-    poll_task.start()
-
-
+bot = F1PollBot()
 bot.run(os.environ.get("BOT_TOKEN"))
