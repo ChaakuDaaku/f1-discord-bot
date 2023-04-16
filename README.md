@@ -3,6 +3,15 @@
 ```
 pip install -r requirements.txt
 ```
+If you have [poetry](https://python-poetry.org/) installed then
+```bash
+poetry install
+```
+To enable virtual environment
+```bash
+poetry shell
+```
+
 
 Change the `DTSTART` of `FP1` and `Qualifying` of the *same* Grand prix before testing the bot.
 
