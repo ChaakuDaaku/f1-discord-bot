@@ -10,7 +10,7 @@ import discord.ext.tasks as tasks
 from discord import SelectOption, Interaction, PartialEmoji, Message
 from discord.ui import View, Select
 from icalendar import Calendar, Event
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, TypedDict
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
@@ -33,12 +33,20 @@ with open('./data/Formula_1.ics', 'r', encoding="utf-8") as F1_CAL:
 
 bot_start_dates = [f1_calendar[loc]['Practice 1'].date() for loc in f1_calendar]
 
-
 #Driver dict
+drivers : List[Dict[str,str]]
 with open('./data/drivers.json') as d_json:
     drivers = json.load(d_json)
 
+
+class PollResults(TypedDict):
+    username: str
+    sheetName: str
+    predictions: Dict[str, str]
+
+
 #Player dict
+poll_results : Dict[str, PollResults]
 with open('./data/player_map.json') as pm_json:
     poll_results = json.load(pm_json)
 
@@ -71,8 +79,8 @@ class DriverSelect(Select):
         print(f'{user_name} chose {driver} for {position}')
         poll_results[str(user_id)]["predictions"][position] = driver
         # await asyncio.sleep(1)
-        # await interaction.response.send_message(content=f'You chose {driver} for {position}', ephemeral=True)
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.send_message(content=f'You chose {driver} for {position}', ephemeral=True)
+        # await interaction.response.defer(ephemeral=True)
 
 
 class PollView(View):
