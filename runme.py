@@ -79,8 +79,8 @@ class DriverSelect(Select):
         print(f'{user_name} chose {driver} for {position}')
         poll_results[str(user_id)]["predictions"][position] = driver
         # await asyncio.sleep(1)
-        await interaction.response.send_message(content=f'You chose {driver} for {position}', ephemeral=True)
-        # await interaction.response.defer(ephemeral=True)
+        # await interaction.response.send_message(content=f'You chose {driver} for {position}', ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
 
 
 class PollView(View):
@@ -166,42 +166,43 @@ class Poller(commands.Cog):
     @tasks.loop(seconds=10, reconnect=True)
     async def poll_task(self):
         print("task loop started")
-        if not self.is_weekend():
+        if (not self.is_weekend()):
             return
-        if self.event == '':
+        if (self.event == ''):
             print('Fresh bot. Who dis.')
             self.event = self.get_datetimes()
-        elif self.event == 'Quali' and datetime.now(timezone.utc) > (f1_calendar[self.loc]['Qualifying'] + timedelta(days=3)):
+        elif (self.event == 'Quali') and (datetime.now(timezone.utc) > (self.qlf_dt + timedelta(days=3))):
             print('Prime the bot for next event')
             self.event = self.get_datetimes()
-        elif self.event == 'Not found':
+        elif (self.event == 'Not found'):
             print('Bot start date found but rest of the data missing??')
             return
         self.time = datetime.now(timezone.utc).time()
-        if self.time < self.fp1_dt.time():
+        if (self.time < self.fp1_dt.time()):
             print(f'Not time yet, starting poll at {self.fp1_dt.time()}')
             self.poll_task.change_interval(time=self.fp1_dt.time())
             return
-        elif self.time > self.qlf_dt.time() and self.date == f1_calendar[loc]['Practice 1'].date():
+        elif (self.time > self.qlf_dt.time()) and (datetime.now(timezone.utc) < self.qlf_dt):
             print(f'Quali ends next day at {self.qlf_dt.time()}')
-            self.poll_task.change_interval(time=self.qlf_dt.time())
             return
-        elif not self.message_sent and self.event == 'FP1':
+        elif (not self.message_sent) and (self.event == 'FP1'):
             print("Time for predictions!")
             self.message_sent = True
-            self.poll_task.change_interval(time=self.qlf_dt.time())
-            self.message = await self.channel.send(content=f'{self.loc} - Predictions Open', view=self.poll_view)
+            self.poll_task.change_interval(seconds=10)
+            self.message = await self.channel.send(content=f'{self.loc} - Predictions Open @everyone', view=self.poll_view)
             self.poll_view.get_message(self.message, self.loc)
             return
-        elif datetime.now(timezone.utc) > f1_calendar[self.loc]['Qualifying'] and self.event == 'FP1':
+        elif (datetime.now(timezone.utc) > self.qlf_dt) and (self.event == 'FP1'):
             print('Quali started. Poll Closed.')
             await self.poll_view.on_timeout()
             self.message_sent = False
             self.event = 'Quali'
-            self.poll_task.change_interval(seconds=10)
             return
         else:
-            print('Bot sleeping')
+            if (self.event == 'FP1'):
+                print('Bot waiting')
+            else:
+                print('Bot sleeping')
             return
 
 
