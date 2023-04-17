@@ -3,3 +3,4 @@ poll_results.json
 scratchpad.txt
 poetry.lock
 simple.py
+data/player_map.json

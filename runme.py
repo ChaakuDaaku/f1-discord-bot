@@ -1,31 +1,29 @@
 import os
-import asyncio
 import json
 from os.path import join, dirname
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-import re
 
 import discord
 import discord.ext.commands as commands
 import discord.ext.tasks as tasks
-from discord import SelectOption, Emoji, Guild, Interaction
+from discord import SelectOption, Interaction, PartialEmoji
 from discord.ui import View, Select
 from icalendar import Calendar, Event
-from typing import List, Tuple, Optional
+from typing import List, Optional
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
 
 #Calendar dict to sort the mess
 f1_calendar = {}
-with open('./Formula_1.ics', 'r') as F1_CAL:
+with open('./data/Formula_1.ics', 'r', encoding="utf-8") as F1_CAL:
     cal: Calendar = Calendar.from_ical(F1_CAL.read())
     wknd_event: Event
     for wknd_event in cal.walk('VEVENT'):
         loc, typ = wknd_event['SUMMARY'].split(' - ')
         tim:datetime = wknd_event['DTSTART'].dt
-        loc:str = loc[2:].strip()
+        loc:str = loc[2:].strip().title()
         typ:str = typ.strip()
         if typ in ['Practice 1', 'Qualifying']:
             if loc not in f1_calendar:
@@ -42,7 +40,14 @@ for loc in f1_calendar:
     view_end.append(f1_calendar[loc]['Qualifying'])
 bot_start_dates = [day.date() for day in bot_start]
 
-poll_results = {}
+
+#Driver dict
+with open('./data/drivers.json') as d_json:
+    drivers = json.load(d_json)
+
+#Player dict
+with open('./data/player_map.json') as pm_json:
+    poll_results = json.load(pm_json)
 
 class DriverSelect(Select):
     def __init__(self, *, custom_id: str = ..., placeholder: Optional[str] = None, min_values: int = 1, max_values: int = 1, options: List[SelectOption] = ..., disabled: bool = False, row: Optional[int] = None) -> None:
@@ -66,31 +71,29 @@ class DriverSelect(Select):
 
     async def callback(self, interaction: Interaction) -> None:
         assert self.view is not None
+        user_id = interaction.user.id
         user_name = interaction.user.name
         position = interaction.data['custom_id']
         driver = interaction.data['values'][0]
         print(f'{user_name} chose {driver} for {position}')
-        if user_name not in poll_results:
-            poll_results[user_name] = {position: driver}
-        else:
-            poll_results[user_name][position] = driver
+        poll_results[str(user_id)]["predictions"][position] = driver
         # await asyncio.sleep(1)
         # await interaction.response.send_message(content=f'You chose {driver} for {position}', ephemeral=True)
         await interaction.response.defer(ephemeral=True)
 
 
 class PollView(View):
-    def __init__(self, *, timeout: Optional[float] = 180, emojis: Tuple[Emoji, ...]):
+    def __init__(self, *, timeout: Optional[float] = 180, drivers):
         super().__init__(timeout=timeout)
-        self.driver_options = [self.option_gen(emoji) for emoji in emojis]
+        self.driver_options = [self.option_gen(driver) for driver in drivers]
         self.add_item(DriverSelect(custom_id='P1', placeholder='Predict P1', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=0))
         self.add_item(DriverSelect(custom_id='P2', placeholder='Predict P2', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=1))
         self.add_item(DriverSelect(custom_id='P3', placeholder='Predict P3', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=2))
         self.add_item(DriverSelect(custom_id='P4', placeholder='Predict P4', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=3))
         self.add_item(DriverSelect(custom_id='P5', placeholder='Predict P5', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=4))
 
-    def option_gen(self, emoji: Emoji) -> SelectOption:
-        return SelectOption(label=emoji.name, value=emoji.name, emoji=emoji)
+    def option_gen(self, driver) -> SelectOption:
+        return SelectOption(label=driver["name"], value=driver["name"], emoji=PartialEmoji.from_str(driver["emocode"]))
 
     async def on_timeout(self) -> None:
         print("View Timeout")
@@ -124,8 +127,8 @@ class Poller(commands.Cog):
         self.time = datetime.now(timezone.utc).time()
         self.date = datetime.now(timezone.utc).date()
         self.channel = self.bot.get_channel(int(os.environ.get("CHANNEL_ID")))
-        self.guild: Guild = self.bot.guilds[0]
-        self.emojis = self.guild.emojis[:10:-1]
+        # self.guild: Guild = self.bot.guilds[0]
+        # self.emojis = self.guild.emojis[:10:-1]
         self.event = str('')
         self.message_sent = False
         self.poll_task.start()
@@ -135,11 +138,11 @@ class Poller(commands.Cog):
 
     @tasks.loop(seconds=10, reconnect=True)
     async def poll_task(self):
-        print("task loop started")
+        print("Understood! We are checking...")
         self.date = datetime.now(timezone.utc).date()
         self.time = datetime.now(timezone.utc).time()
         if self.date not in bot_start_dates:
-            print(f'No race this weekend')
+            print(f'No rawe ceek!')
             return
         else:
             for i, dt in enumerate(bot_start):
@@ -154,7 +157,7 @@ class Poller(commands.Cog):
                         self.event = events[i]
                         self.duration: float = (view_end[i] - bot_start[i]).total_seconds()
                         print(f"Predictions closing in {self.duration} seconds")
-                        self.poll_view = PollView(timeout=self.duration, emojis=self.emojis)
+                        self.poll_view = PollView(timeout=self.duration, drivers=drivers)
                         self.poll_task.change_interval(time=view_end[i].time())
                         self.message_sent = True
                         break
