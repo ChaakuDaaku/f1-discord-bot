@@ -12,22 +12,37 @@ To enable virtual environment
 poetry shell
 ```
 
-Create a `player_map.json` in `data` folder with the following format for all the players
+Create following json fils in `data` folder with the following format for all the players
 
+`player_map.json`
 ```
 {
     "{18-digit discord user name}": {
         "username": "{discord user name}",
-        "predictions": {
-            "P1": "",
-            "P2": "",
-            "P3": "",
-            "P4": "",
-            "P5": ""
-        }
+        "sheetName": "{Common name}",
+        "runningTotal": 15,
+        "pastScores": [
+            5,
+            5,
+            5,
+            ...
+        ]
     }
-    ....
+    ...
 }
+```
+
+`race_result_map.json`
+```
+{
+    "{18-digit discord user name}": ["", "", "", "", ""],
+    ...
+}
+```
+
+`race_data_store.json` - This will start empty, and then gets autofilled with the help of race_result_map.json
+```
+[]
 ```
 
 Change the `DTSTART` of `FP1` and `Qualifying` of the *same* Grand prix before testing the bot.
@@ -41,5 +56,6 @@ python runme.py
 1. ~~Fix the button interaction failure~~
 1. ~~Change the messages~~
 1. ~~Improve the JSON output~~
-1. Figure out a better way to export the results
-1. Connect gSheets to autofill the results (will probably have to create a map the discord users to users in the sheet)
+1. ~~Figure out a better way to export the results~~
+1. ~~Create a datastore~~
+1. ~~Create a leaderboard~~

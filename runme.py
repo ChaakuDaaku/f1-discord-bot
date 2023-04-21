@@ -10,7 +10,9 @@ import discord.ext.tasks as tasks
 from discord import SelectOption, Interaction, PartialEmoji, Message
 from discord.ui import View, Select
 from icalendar import Calendar, Event
-from typing import List, Optional, Dict, TypedDict
+from typing import List, Optional, Dict
+
+import points_calculator
 
 dotenv_path = join(dirname(__file__), '.env')
 load_dotenv(dotenv_path)
@@ -38,20 +40,27 @@ drivers : List[Dict[str,str]]
 with open('./data/drivers.json') as d_json:
     drivers = json.load(d_json)
 
-
-class PollResults(TypedDict):
-    username: str
-    sheetName: str
-    predictions: Dict[str, str]
-
-
 #Player dict
-poll_results : Dict[str, PollResults]
 with open('./data/player_map.json') as pm_json:
-    poll_results = json.load(pm_json)
+    player_map = json.load(pm_json)
+
+#Race result map
+with open('./data/race_result_map.json') as rrm_json:
+    race_result_map = json.load(rrm_json)
+
+#Poll result data store
+with open('./data/race_data_store.json') as rds_json:
+    rds = json.load(rds_json)
+
 
 class DriverSelect(Select):
-    def __init__(self, *, custom_id: str = ..., placeholder: Optional[str] = None, min_values: int = 1, max_values: int = 1, options: List[SelectOption] = ..., disabled: bool = False, row: Optional[int] = None) -> None:
+    def __init__(self, *, custom_id: str = ...,
+                 placeholder: Optional[str] = None, 
+                 min_values: int = 1, 
+                 max_values: int = 1, 
+                 options: List[SelectOption] = ..., 
+                 disabled: bool = False, 
+                 row: Optional[int] = None) -> None:
 
         super().__init__(
             custom_id=custom_id,
@@ -76,10 +85,8 @@ class DriverSelect(Select):
         user_name = interaction.user.name
         position = interaction.data['custom_id']
         driver = interaction.data['values'][0]
-        print(f'{user_name} chose {driver} for {position}')
-        poll_results[str(user_id)]["predictions"][position] = driver
-        # await asyncio.sleep(1)
-        # await interaction.response.send_message(content=f'You chose {driver} for {position}', ephemeral=True)
+        print(f'{user_name} chose {driver} for P{int(position) + 1}')
+        race_result_map[str(user_id)][int(position)] = driver
         await interaction.response.defer(ephemeral=True)
 
 
@@ -88,11 +95,8 @@ class PollView(View):
         super().__init__(timeout=timeout)
         self.message = None
         self.driver_options = [self.option_gen(driver) for driver in drivers]
-        self.add_item(DriverSelect(custom_id='P1', placeholder='Predict P1', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=0)) \
-            .add_item(DriverSelect(custom_id='P2', placeholder='Predict P2', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=1)) \
-            .add_item(DriverSelect(custom_id='P3', placeholder='Predict P3', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=2)) \
-            .add_item(DriverSelect(custom_id='P4', placeholder='Predict P4', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=3)) \
-            .add_item(DriverSelect(custom_id='P5', placeholder='Predict P5', min_values=1, max_values=1, options=self.driver_options, disabled=False, row=4))
+        for i in range(5):
+            self.add_item(DriverSelect(custom_id=f'{i}', placeholder=f'Predict P{i+1}' , min_values=1, max_values=1, options=self.driver_options, disabled=False, row=i))
 
     def option_gen(self, driver) -> SelectOption:
         return SelectOption(label=driver["name"], value=driver["name"], emoji=PartialEmoji.from_str(driver["emocode"]))
@@ -101,7 +105,7 @@ class PollView(View):
         self.loc = loc
         self.message = message
 
-    async def on_timeout(self) -> None:
+    async def on_timeout(self, poll_results) -> None:
         print("View Timeout")
         self.stop()
         selects: DriverSelect
@@ -109,8 +113,9 @@ class PollView(View):
             selects.disabled = True
         print(poll_results)
         await self.message.edit(content=(loc+' - Predictions Closed'), view=self)
-        with open('./poll_results.json', 'w') as f:
-            json.dump(poll_results, f)
+        with open('./data/race_data_store.json', 'w') as f:
+            rds.append(poll_results)
+            json.dump(rds, f)
         return await super().on_timeout()
 
 class F1PollBot(commands.Bot):
@@ -133,8 +138,6 @@ class Poller(commands.Cog):
         self.time = datetime.now(timezone.utc).time()
         self.date = datetime.now(timezone.utc).date()
         self.channel = self.bot.get_channel(int(os.environ.get("CHANNEL_ID")))
-        # self.guild: Guild = self.bot.guilds[0]
-        # self.emojis = self.guild.emojis[:10:-1]
         self.event = ''
         self.message_sent = False
         self.poll_view = PollView(drivers=drivers)
@@ -160,8 +163,7 @@ class Poller(commands.Cog):
                 self.qlf_dt = f1_calendar[loc]['Qualifying']
                 self.poll_view.timeout = (self.qlf_dt - self.fp1_dt).total_seconds()
                 return 'FP1'
-            else:
-                return 'Not found'
+        return 'Not found'
 
     @tasks.loop(seconds=10, reconnect=True)
     async def poll_task(self):
@@ -171,6 +173,7 @@ class Poller(commands.Cog):
         if (self.event == ''):
             print('Fresh bot. Who dis.')
             self.event = self.get_datetimes()
+            print("Found datetimes")
         elif (self.event == 'Quali') and (datetime.now(timezone.utc) > (self.qlf_dt + timedelta(days=3))):
             print('Prime the bot for next event')
             self.event = self.get_datetimes()
@@ -187,6 +190,7 @@ class Poller(commands.Cog):
             return
         elif (not self.message_sent) and (self.event == 'FP1'):
             print("Time for predictions!")
+            self.poll_results = { self.loc : race_result_map}
             self.message_sent = True
             self.poll_task.change_interval(seconds=10)
             self.message = await self.channel.send(content=f'{self.loc} - Predictions Open @everyone', view=self.poll_view)
@@ -194,7 +198,7 @@ class Poller(commands.Cog):
             return
         elif (datetime.now(timezone.utc) > self.qlf_dt) and (self.event == 'FP1'):
             print('Quali started. Poll Closed.')
-            await self.poll_view.on_timeout()
+            await self.poll_view.on_timeout(self.poll_results)
             self.message_sent = False
             self.event = 'Quali'
             return
@@ -207,4 +211,26 @@ class Poller(commands.Cog):
 
 
 bot = F1PollBot()
+
+@bot.command("calculate")
+async def calculate_race_result(ctx, P1:str, P2:str, P3:str, P4:str, P5:str):
+    print("Race Result time")
+    with open('./data/race_data_store.json') as f:
+        rds = json.load(f)
+    with open('./data/race_data_store.json', 'w') as f:
+        list(rds[-1].values())[0]['race_result'] = [P1, P2, P3, P4, P5]
+        json.dump(rds, f)
+    points_calculator.calculate_points()
+
+    em = discord.Embed(
+        title = f'Leaderboard',
+        description = 'After calculating the scores from the last race'
+    )
+    standings = points_calculator.leaderboard()
+
+    for index, standing in enumerate(standings):
+        for name, score in standing.items():
+            em.add_field(name = f'{index + 1}: {name}', value = f'{score}', inline=False)
+    await ctx.channel.send(embed=em)
+
 bot.run(os.environ.get("BOT_TOKEN"))
