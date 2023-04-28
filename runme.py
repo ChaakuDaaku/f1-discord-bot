@@ -105,12 +105,21 @@ class PollView(View):
         self.loc = loc
         self.message = message
 
+    def handleNullValues(self, poll_results):
+        for key, value in poll_results.items():
+            if key != "race_result":
+                for i, val in enumerate(value):
+                    if val == "":
+                        poll_results[key][i] = "LAT"
+        print(poll_results)
+
     async def on_timeout(self, poll_results) -> None:
         print("View Timeout")
         self.stop()
         selects: DriverSelect
         for selects in self.children:
             selects.disabled = True
+        poll_results = self.handleNullValues(poll_results)
         print(poll_results)
         await self.message.edit(content=(loc+' - Predictions Closed'), view=self)
         with open('./data/race_data_store.json', 'w') as f:
@@ -225,6 +234,19 @@ async def calculate_race_result(ctx, P1:str, P2:str, P3:str, P4:str, P5:str):
     em = discord.Embed(
         title = f'Leaderboard',
         description = 'After calculating the scores from the last race'
+    )
+    standings = points_calculator.leaderboard()
+
+    for index, standing in enumerate(standings):
+        for name, score in standing.items():
+            em.add_field(name = f'{index + 1}: {name}', value = f'{score}', inline=False)
+    await ctx.channel.send(embed=em)
+
+@bot.command("leaders")
+async def leaderboard(ctx):
+    em = discord.Embed(
+    title = f'Leaderboard',
+    description = 'After calculating the scores from the last race'
     )
     standings = points_calculator.leaderboard()
 
