@@ -16,37 +16,63 @@ def calculate_points():
         if user_id != "race_result":
             if preds[0] == race_result[0]:
                 total_points += 8
-            elif preds[1] == race_result[1]:
+            if preds[1] == race_result[1]:
                 total_points += 9
-            elif preds[2] == race_result[2]:
+            if preds[2] == race_result[2]:
                 total_points += 10
-            elif preds[3] == race_result[3]:
+            if preds[3] == race_result[3]:
                 total_points += 12
-            elif preds[4] == race_result[4]:
+            if preds[4] == race_result[4]:
                 total_points += 15
 
-            elif preds[0] == race_result[1]:
+            if preds[0] == race_result[1]:
                 total_points += 5
-            elif preds[0] == race_result[2]:
+            if preds[1] == race_result[0]:
+                total_points += 5
+
+            if preds[0] == race_result[2]:
                 total_points += 4
-            elif preds[0] == race_result[3]:
+            if preds[2] == race_result[0]:
+                total_points += 4
+
+            if preds[0] == race_result[3]:
                 total_points += 2
-            elif preds[0] == race_result[4]:
+            if preds[3] == race_result[0]:
+                total_points += 2
+
+            if preds[0] == race_result[4]:
+                total_points += 1
+            if preds[4] == race_result[0]:
                 total_points += 1
 
-            elif preds[1] == race_result[2]:
+            if preds[1] == race_result[2]:
                 total_points += 3
-            elif preds[1] == race_result[3]:
+            if preds[2] == race_result[1]:
+                total_points += 3
+
+            if preds[1] == race_result[3]:
                 total_points += 2
-            elif preds[1] == race_result[4]:
+            if preds[3] == race_result[1]:
+                total_points += 2
+
+            if preds[1] == race_result[4]:
+                total_points += 1
+            if preds[4] == race_result[1]:
                 total_points += 1
 
-            elif preds[2] == race_result[3]:
+            if preds[2] == race_result[3]:
                 total_points += 2
-            elif preds[2] == race_result[4]:
+            if preds[3] == race_result[2]:
+                total_points += 2
+
+            if preds[2] == race_result[4]:
+                total_points += 1
+            if preds[4] == race_result[2]:
                 total_points += 1
 
-            elif preds[3] == race_result[4]:
+            if preds[3] == race_result[4]:
+                total_points += 2
+            if preds[4] == race_result[3]:
                 total_points += 2
 
             pm[user_id]["runningTotal"] = pm[user_id]["runningTotal"] + total_points
