@@ -86,8 +86,9 @@ class DriverSelect(Select):
         position = interaction.data['custom_id']
         driver = interaction.data['values'][0]
         print(f'{user_name} chose {driver} for P{int(position) + 1}')
+        await interaction.response.send_message(f"You chose {driver} for P{int(position) + 1}" ,ephemeral=True, delete_after=216000)
         race_result_map[str(user_id)][int(position)] = driver
-        await interaction.response.defer(ephemeral=True)
+        # await interaction.response.defer(ephemeral=True)
 
 
 class PollView(View):
