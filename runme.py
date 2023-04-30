@@ -106,24 +106,32 @@ class PollView(View):
         self.message = message
 
     def handleNullValues(self, poll_results):
-        for key, value in poll_results.items():
+        for key, value in poll_results[self.loc].items():
             if key != "race_result":
                 for i, val in enumerate(value):
                     if val == "":
-                        poll_results[key][i] = "LAT"
-        print(poll_results)
+                        poll_results[self.loc][key][i] = "LAT"
+
+        print("LAT G.O.A.T.")
+        return poll_results
 
     async def on_timeout(self, poll_results) -> None:
         print("View Timeout")
         self.stop()
+        if poll_results == {}:
+            return await super().on_timeout()
         selects: DriverSelect
         for selects in self.children:
             selects.disabled = True
-        poll_results = self.handleNullValues(poll_results)
-        print(poll_results)
+
+        print("Old Value")
+        print(type(poll_results))
+        results = self.handleNullValues(poll_results)
+        print("New Value")
+        print(results)
         await self.message.edit(content=(loc+' - Predictions Closed'), view=self)
         with open('./data/race_data_store.json', 'w') as f:
-            rds.append(poll_results)
+            rds.append(results)
             json.dump(rds, f)
         return await super().on_timeout()
 
@@ -151,6 +159,7 @@ class Poller(commands.Cog):
         self.message_sent = False
         self.poll_view = PollView(drivers=drivers)
         self.poll_task.start()
+        self.poll_results = {}
 
     def cog_unload(self) -> None:
         self.poll_task.cancel()
@@ -174,7 +183,7 @@ class Poller(commands.Cog):
                 return 'FP1'
         return 'Not found'
 
-    @tasks.loop(seconds=10, reconnect=True)
+    @tasks.loop(seconds=60, reconnect=True)
     async def poll_task(self):
         print("task loop started")
         if (not self.is_weekend()):
@@ -197,7 +206,7 @@ class Poller(commands.Cog):
         elif (self.time > self.qlf_dt.time()) and (datetime.now(timezone.utc) < self.qlf_dt):
             print(f'Quali ends next day at {self.qlf_dt.time()}')
             return
-        elif (not self.message_sent) and (self.event == 'FP1'):
+        elif (not self.message_sent) and (self.event == 'FP1') and (datetime.now(timezone.utc) < self.qlf_dt):
             print("Time for predictions!")
             self.poll_results = { self.loc : race_result_map}
             self.message_sent = True
@@ -215,6 +224,7 @@ class Poller(commands.Cog):
             if (self.event == 'FP1'):
                 print('Bot waiting')
             else:
+                self.poll_task.change_interval(seconds=600)
                 print('Bot sleeping')
             return
 

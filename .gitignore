@@ -6,4 +6,5 @@ simple.py
 data/player_map.json
 data/race_result_map.json
 data/race_data_store.json
+data_backup
 __*

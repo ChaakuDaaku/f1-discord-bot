@@ -63,6 +63,6 @@ def leaderboard():
     leaders = sorted(pm.items(), key=lambda item: item[1]["runningTotal"], reverse=True)
     standings = []
     for leader in leaders:
-        standings.append({leader[1]["sheetName"]: leader[1]["runningTotal"]})
+        standings.append({leader[1]["sheetName"]: f'> {str(leader[1]["runningTotal"])} \n> {"🦆" if leader[1]["pastScores"][-1] == 0 else "🚀"} {str(leader[1]["pastScores"][-1])}'})
 
     return standings
