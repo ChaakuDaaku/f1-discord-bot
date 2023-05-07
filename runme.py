@@ -3,6 +3,9 @@ import json
 from os.path import join, dirname
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
+import requests
+import logging as log
+log.basicConfig(filename='bot-application.log', encoding='utf-8', level=log.INFO, format='%(asctime)s %(message)s')
 
 import discord
 import discord.ext.commands as commands
@@ -11,6 +14,7 @@ from discord import SelectOption, Interaction, PartialEmoji, Message
 from discord.ui import View, Select
 from icalendar import Calendar, Event
 from typing import List, Optional, Dict
+from table2ascii import table2ascii as t2a, PresetStyle
 
 import points_calculator
 
@@ -19,19 +23,20 @@ load_dotenv(dotenv_path)
 
 #Calendar dict to sort the mess
 f1_calendar:Dict[str, Dict[str, datetime]] = {}
-with open('./data/Formula_1.ics', 'r', encoding="utf-8") as F1_CAL:
-    cal: Calendar = Calendar.from_ical(F1_CAL.read())
-    wknd_event: Event
-    for wknd_event in cal.walk('VEVENT'):
-        loc, typ = wknd_event['SUMMARY'].split(' - ')
-        tim:datetime = wknd_event['DTSTART'].dt
-        loc:str = loc[2:].strip().title()
-        typ:str = typ.strip()
-        if typ in ['Practice 1', 'Qualifying']:
-            if loc not in f1_calendar:
-                f1_calendar[loc] = {typ:tim}
-            else:
-                f1_calendar[loc][typ] = tim
+cal: Calendar = Calendar.from_ical(requests.get(os.environ.get("CALENDAR_URL")).text)
+wknd_event: Event
+for wknd_event in cal.walk('VEVENT'):
+    if len(wknd_event['SUMMARY'].split(' - ')) < 2:
+        continue
+    loc, typ = wknd_event['SUMMARY'].split(' - ')
+    tim:datetime = wknd_event['DTSTART'].dt
+    loc:str = loc[2:].strip().title()
+    typ:str = typ.strip()
+    if typ in ['Practice 1', 'Qualifying']:
+        if loc not in f1_calendar:
+            f1_calendar[loc] = {typ:tim}
+        else:
+            f1_calendar[loc][typ] = tim
 
 bot_start_dates = [f1_calendar[loc]['Practice 1'].date() for loc in f1_calendar]
 
@@ -63,7 +68,7 @@ class DriverSelect(Select):
                  row: Optional[int] = None) -> None:
 
         super().__init__(
-            custom_id=custom_id,
+            custom_id=custom_id,~
             placeholder=placeholder,
             min_values=min_values,
             max_values=max_values,
@@ -85,7 +90,7 @@ class DriverSelect(Select):
         user_name = interaction.user.name
         position = interaction.data['custom_id']
         driver = interaction.data['values'][0]
-        print(f'{user_name} chose {driver} for P{int(position) + 1}')
+        log.info(f'{user_name} chose {driver} for P{int(position) + 1}')
         await interaction.response.send_message(f"You chose {driver} for P{int(position) + 1}" ,ephemeral=True, delete_after=216000)
         race_result_map[str(user_id)][int(position)] = driver
         # await interaction.response.defer(ephemeral=True)
@@ -113,24 +118,35 @@ class PollView(View):
                     if val == "":
                         poll_results[self.loc][key][i] = "LAT"
 
-        print("LAT G.O.A.T.")
+        log.info("Handled null values")
         return poll_results
+    
+    def transpose(self, M):
+        return [[M[j][i] for j in range(len(M))] for i in range(len(M[0]))]
+    
+    def drawTable(self, poll_results):
+        with open("./data/player_map.json") as pm_json:
+            pm = json.load(pm_json)
+            prediction_table = t2a(
+                header=[pm[x]["sheetName"] for x in list(poll_results[self.loc].keys())[:-1]],
+                body=self.transpose(list(poll_results[self.loc].values())[:-1]),
+                style=PresetStyle.minimalist
+            )
+            return prediction_table
 
     async def on_timeout(self, poll_results) -> None:
-        print("View Timeout")
+        log.info("Poll Timeout")
         self.stop()
         if poll_results == {}:
             return await super().on_timeout()
         selects: DriverSelect
         for selects in self.children:
             selects.disabled = True
-
-        print("Old Value")
-        print(type(poll_results))
         results = self.handleNullValues(poll_results)
-        print("New Value")
+        log.info(results)
         print(results)
-        await self.message.edit(content=(loc+' - Predictions Closed'), view=self)
+        prediction_table = self.drawTable(results)
+        await self.message.edit(content=(f"{loc} - Predictions Closed ```\n{prediction_table}\n```"), view=None)
         with open('./data/race_data_store.json', 'w') as f:
             rds.append(results)
             json.dump(rds, f)
@@ -168,7 +184,6 @@ class Poller(commands.Cog):
     def is_weekend(self) -> bool:
         self.date = datetime.now(timezone.utc).date()
         if self.date not in bot_start_dates:
-            print(f'No FP1 today')
             return False
         else:
             return True
@@ -176,7 +191,7 @@ class Poller(commands.Cog):
     def get_datetimes(self) -> str:
         for loc in f1_calendar:
             if self.date == f1_calendar[loc]['Practice 1'].date():
-                print(f'Race weekend at {loc}')
+                log.info(f'Race weekend at {loc}')
                 self.loc = loc
                 self.fp1_dt = f1_calendar[loc]['Practice 1']
                 self.qlf_dt = f1_calendar[loc]['Qualifying']
@@ -186,47 +201,50 @@ class Poller(commands.Cog):
 
     @tasks.loop(seconds=60, reconnect=True)
     async def poll_task(self):
-        print("task loop started")
         if (not self.is_weekend()):
+            log.info('No Rawe Ceek this weekend but bot is alive and sleeping')
+            self.poll_task.change_interval(seconds=3600)
             return
         if (self.event == ''):
             print('Fresh bot. Who dis.')
             self.event = self.get_datetimes()
-            print("Found datetimes")
+            log.info("Found datetimes")
         elif (self.event == 'Quali') and (datetime.now(timezone.utc) > (self.qlf_dt + timedelta(days=3))):
-            print('Prime the bot for next event')
+            log.info('Prime the bot for next event')
             self.event = self.get_datetimes()
         elif (self.event == 'Not found'):
-            print('Bot start date found but rest of the data missing??')
+            log.warn('Bot start date found but rest of the data missing??')
             return
         self.time = datetime.now(timezone.utc).time()
         if (self.time < self.fp1_dt.time()):
-            print(f'Not time yet, starting poll at {self.fp1_dt.time()}')
+            log.info(f'Not time yet, starting poll at {self.fp1_dt.time()}')
             self.poll_task.change_interval(time=self.fp1_dt.time())
             return
         elif (self.time > self.qlf_dt.time()) and (datetime.now(timezone.utc) < self.qlf_dt):
-            print(f'Quali ends next day at {self.qlf_dt.time()}')
+            log.info(f'Quali ends next day at {self.qlf_dt.time()}')
             return
         elif (not self.message_sent) and (self.event == 'FP1') and (datetime.now(timezone.utc) < self.qlf_dt):
-            print("Time for predictions!")
+            log.info("Time for predictions!")
             self.poll_results = { self.loc : race_result_map}
             self.message_sent = True
             self.poll_task.change_interval(seconds=10)
             self.message = await self.channel.send(content=f'{self.loc} - Predictions Open @everyone', view=self.poll_view)
             self.poll_view.get_message(self.message, self.loc)
+            log.info(f'Quali ends at {self.qlf_dt.time()}')
             return
         elif (datetime.now(timezone.utc) > self.qlf_dt) and (self.event == 'FP1'):
-            print('Quali started. Poll Closed.')
+            log.info('Quali started. Poll Closed.')
             await self.poll_view.on_timeout(self.poll_results)
             self.message_sent = False
             self.event = 'Quali'
             return
         else:
             if (self.event == 'FP1'):
-                print('Bot waiting')
+                log.info('Bot waiting')
+                self.poll_task.change_interval(seconds=60)
             else:
-                self.poll_task.change_interval(seconds=600)
-                print('Bot sleeping')
+                log.info('Bot going to sleep')
+                self.poll_task.change_interval(seconds=7200)
             return
 
 
@@ -234,7 +252,6 @@ bot = F1PollBot()
 
 @bot.command("calculate")
 async def calculate_race_result(ctx, P1:str, P2:str, P3:str, P4:str, P5:str):
-    print("Race Result time")
     with open('./data/race_data_store.json') as f:
         rds = json.load(f)
     with open('./data/race_data_store.json', 'w') as f:
