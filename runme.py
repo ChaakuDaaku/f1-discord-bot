@@ -4,6 +4,7 @@ from os.path import join, dirname
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 import requests
+import shutil
 import logging as log
 log.basicConfig(filename='bot-application.log', encoding='utf-8', level=log.INFO, format='%(asctime)s %(message)s')
 
@@ -39,6 +40,7 @@ for wknd_event in cal.walk('VEVENT'):
             f1_calendar[loc][typ] = tim
 
 bot_start_dates = [f1_calendar[loc]['Practice 1'].date() for loc in f1_calendar]
+bot_end_dates = [f1_calendar[loc]['Qualifying'].date() for loc in f1_calendar]
 
 #Driver dict
 drivers : List[Dict[str,str]]
@@ -68,7 +70,7 @@ class DriverSelect(Select):
                  row: Optional[int] = None) -> None:
 
         super().__init__(
-            custom_id=custom_id,~
+            custom_id=custom_id,
             placeholder=placeholder,
             min_values=min_values,
             max_values=max_values,
@@ -146,10 +148,12 @@ class PollView(View):
         log.info(results)
         print(results)
         prediction_table = self.drawTable(results)
-        await self.message.edit(content=(f"{loc} - Predictions Closed ```\n{prediction_table}\n```"), view=None)
+        await self.message.edit(content=(f"{self.loc} - Predictions Closed ```\n{prediction_table}\n```"), view=None)
         with open('./data/race_data_store.json', 'w') as f:
             rds.append(results)
             json.dump(rds, f)
+
+        shutil.make_archive(f'data_backup_{datetime.now(timezone.utc).date()}_{self.loc}', 'zip', './data/')
         return await super().on_timeout()
 
 class F1PollBot(commands.Bot):
@@ -183,7 +187,7 @@ class Poller(commands.Cog):
 
     def is_weekend(self) -> bool:
         self.date = datetime.now(timezone.utc).date()
-        if self.date not in bot_start_dates:
+        if self.date not in bot_start_dates and self.date not in bot_end_dates:
             return False
         else:
             return True
@@ -199,7 +203,7 @@ class Poller(commands.Cog):
                 return 'FP1'
         return 'Not found'
 
-    @tasks.loop(seconds=60, reconnect=True)
+    @tasks.loop(seconds=600, reconnect=True)
     async def poll_task(self):
         if (not self.is_weekend()):
             log.info('No Rawe Ceek this weekend but bot is alive and sleeping')
@@ -216,6 +220,7 @@ class Poller(commands.Cog):
             log.warn('Bot start date found but rest of the data missing??')
             return
         self.time = datetime.now(timezone.utc).time()
+        log.info(f'The current event is {self.event} and the Poll is {"Running" if self.poll_task.is_running() else "Ded"} with the Session ID {self.bot.ws.session_id}')
         if (self.time < self.fp1_dt.time()):
             log.info(f'Not time yet, starting poll at {self.fp1_dt.time()}')
             self.poll_task.change_interval(time=self.fp1_dt.time())
