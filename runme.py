@@ -127,11 +127,16 @@ class PollView(View):
         return [[M[j][i] for j in range(len(M))] for i in range(len(M[0]))]
     
     def drawTable(self, poll_results):
+        playing = dict()
+        for i,j in poll_results[self.loc].items():
+            if all(x != "LAT" for x in j):
+                playing[i] = j
+
         with open("./data/player_map.json") as pm_json:
             pm = json.load(pm_json)
             prediction_table = t2a(
-                header=[pm[x]["sheetName"] for x in list(poll_results[self.loc].keys())[:-1]],
-                body=self.transpose(list(poll_results[self.loc].values())[:-1]),
+                header=[pm[x]["sheetName"] for x in list(playing.keys())[:-1]],
+                body=self.transpose(list(playing.values())[:-1]),
                 style=PresetStyle.minimalist
             )
             return prediction_table
@@ -181,6 +186,7 @@ class Poller(commands.Cog):
         self.poll_view = PollView(drivers=drivers)
         self.poll_task.start()
         self.poll_results = {}
+        self.get_datetimes()
 
     def cog_unload(self) -> None:
         self.poll_task.cancel()
@@ -194,7 +200,7 @@ class Poller(commands.Cog):
 
     def get_datetimes(self) -> str:
         for loc in f1_calendar:
-            if self.date == f1_calendar[loc]['Practice 1'].date():
+            if self.date == f1_calendar[loc]['Practice 1'].date() or self.date == f1_calendar[loc]['Qualifying'].date():
                 log.info(f'Race weekend at {loc}')
                 self.loc = loc
                 self.fp1_dt = f1_calendar[loc]['Practice 1']
@@ -210,7 +216,7 @@ class Poller(commands.Cog):
             self.poll_task.change_interval(seconds=3600)
             return
         if (self.event == ''):
-            print('Fresh bot. Who dis.')
+            print('Fresh bot. Who dis.')    
             self.event = self.get_datetimes()
             log.info("Found datetimes")
         elif (self.event == 'Quali') and (datetime.now(timezone.utc) > (self.qlf_dt + timedelta(days=3))):
@@ -221,7 +227,7 @@ class Poller(commands.Cog):
             return
         self.time = datetime.now(timezone.utc).time()
         log.info(f'The current event is {self.event} and the Poll is {"Running" if self.poll_task.is_running() else "Ded"} with the Session ID {self.bot.ws.session_id}')
-        if (self.time < self.fp1_dt.time()):
+        if (self.time < self.fp1_dt.time() and self.date == self.fp1_dt):
             log.info(f'Not time yet, starting poll at {self.fp1_dt.time()}')
             self.poll_task.change_interval(time=self.fp1_dt.time())
             return
@@ -274,6 +280,42 @@ async def calculate_race_result(ctx, P1:str, P2:str, P3:str, P4:str, P5:str):
         for name, score in standing.items():
             em.add_field(name = f'{index + 1}: {name}', value = f'{score}', inline=False)
     await ctx.channel.send(embed=em)
+
+@bot.command("lastpreds")
+async def lastPreds(ctx):
+    def transpose(M):
+        return [[M[j][i] for j in range(len(M))] for i in range(len(M[0]))]
+    
+    with open("./data/race_data_store.json") as rds_json:
+        rds = json.load(rds_json)
+    
+    last_race = list(rds[-1].values())[0]
+    playing = dict()
+
+    for i,j in last_race.items():
+        if all(x != "LAT" for x in j):
+            playing[i] = j
+
+
+    with open("./data/player_map.json") as pm_json:
+        pm = json.load(pm_json)
+        prediction_table = t2a(
+            header=[pm[x]["sheetName"] for x in list(playing.keys())[:-1]],
+            body=transpose(list(playing.values())[:-1]),
+            style=PresetStyle.minimalist
+        )
+
+    em = discord.Embed(
+        title = f'Last Predictions',
+        description = f"```\n{prediction_table}\n```"
+    )
+
+    await ctx.send(embed=em)
+
+
+@bot.command("leader")
+async def raceme(ctx):
+    await ctx.send("I am SPEEEEEEEEEED!!!") 
 
 @bot.command("leaders")
 async def leaderboard(ctx):
