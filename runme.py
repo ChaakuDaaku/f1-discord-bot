@@ -226,13 +226,10 @@ class Poller(commands.Cog):
             log.warn('Bot start date found but rest of the data missing??')
             return
         self.time = datetime.now(timezone.utc).time()
-        log.info(f'The current event is {self.event} and the Poll is {"Running" if self.poll_task.is_running() else "Ded"} with the Session ID {self.bot.ws.session_id}')
+        log.info(f'The current event is {self.event} and the Poll is {"Running" if self.poll_task.is_running() else "Ded"} and message sent {self.message_sent} with the Session ID {self.bot.ws.session_id}')
         if (self.time < self.fp1_dt.time() and self.date == self.fp1_dt):
             log.info(f'Not time yet, starting poll at {self.fp1_dt.time()}')
             self.poll_task.change_interval(time=self.fp1_dt.time())
-            return
-        elif (self.time > self.qlf_dt.time()) and (datetime.now(timezone.utc) < self.qlf_dt):
-            log.info(f'Quali ends next day at {self.qlf_dt.time()}')
             return
         elif (not self.message_sent) and (self.event == 'FP1') and (datetime.now(timezone.utc) < self.qlf_dt):
             log.info("Time for predictions!")
@@ -242,6 +239,9 @@ class Poller(commands.Cog):
             self.message = await self.channel.send(content=f'{self.loc} - Predictions Open @everyone', view=self.poll_view)
             self.poll_view.get_message(self.message, self.loc)
             log.info(f'Quali ends at {self.qlf_dt.time()}')
+            return
+        elif (self.time > self.qlf_dt.time()) and (datetime.now(timezone.utc) < self.qlf_dt):
+            log.info(f'Quali ends next day at {self.qlf_dt.time()}')
             return
         elif (datetime.now(timezone.utc) > self.qlf_dt) and (self.event == 'FP1'):
             log.info('Quali started. Poll Closed.')
