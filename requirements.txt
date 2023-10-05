@@ -2,3 +2,4 @@ discord.py
 icalendar
 python-dotenv
 table2ascii
+requests
