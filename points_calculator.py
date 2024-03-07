@@ -82,6 +82,56 @@ def calculate_points():
         json.dump(pm, f)
  
 
+def calculate_season_points():
+    with open("./data/season_data_store.json") as sds_json:
+        sds = json.load(sds_json)
+
+    with open("./data/player_map.json") as pm_json:
+        pm = json.load(pm_json)
+
+    last_season = list(sds[-1].values())[0]
+
+    season_result = last_season["result"]
+
+    for user_id, preds in last_season.items():
+        total_points = 0
+        if user_id != "result":
+            for i in range(10):
+                if preds[i] == season_result[i]:
+                    total_points += 10
+                
+
+            pm[user_id]["constructorScore"] = total_points
+            pm[user_id]["seasonScore"] = pm[user_id]["runningTotal"] + total_points
+
+    with open("./data/player_map.json", "w") as f:
+        json.dump(pm, f)
+
+
+def constructor_leaderboard():
+    with open("./data/player_map.json") as pm_json:
+        pm = json.load(pm_json)
+
+    leaders = sorted(pm.items(), key=lambda item: item[1]["constructorScore"], reverse=True)
+    standings = []
+    for leader in leaders:
+        standings.append({leader[1]["sheetName"]: f'> {str(leader[1]["constructorScore"])} \n '})
+
+    return standings
+
+
+def season_leaderboard():
+    with open("./data/player_map.json") as pm_json:
+        pm = json.load(pm_json)
+
+    leaders = sorted(pm.items(), key=lambda item: item[1]["seasonScore"], reverse=True)
+    standings = []
+    for leader in leaders:
+        standings.append({leader[1]["sheetName"]: f'> {str(leader[1]["seasonScore"])} \n '})
+
+    return standings
+
+
 def leaderboard():
     with open("./data/player_map.json") as pm_json:
         pm = json.load(pm_json)

@@ -261,6 +261,27 @@ class Poller(commands.Cog):
 
 bot = F1PollBot()
 
+@bot.command("calculateConstructors")
+async def calculate_season_result(ctx, P1:str, P2:str, P3:str, P4:str, P5:str, P6:str, P7:str, P8:str, P9:str, P10:str):
+    with open('./data/season_data_store.json') as f:
+        sds = json.load(f)
+    with open('./data/season_data_store.json', 'w') as f:
+        list(sds[-1].values())[0]['result'] = [P1, P2, P3, P4, P5, P6, P7, P8, P9, P10]
+        json.dump(sds, f)
+    points_calculator.calculate_season_points()
+
+    em = discord.Embed(
+            title = f'Construtor Leaderboard',
+            description = 'After calculating the constructor prediction from the last season'
+        )
+
+    standings = points_calculator.constructor_leaderboard()
+
+    for index, standing in enumerate(standings):
+        for name, score in standing.items():
+            em.add_field(name = f'{index + 1}: {name}', value = f'{score}', inline=False)
+    await ctx.channel.send(embed=em)
+
 @bot.command("calculate")
 async def calculate_race_result(ctx, P1:str, P2:str, P3:str, P4:str, P5:str):
     with open('./data/race_data_store.json') as f:
@@ -324,6 +345,19 @@ async def leaderboard(ctx):
     description = 'After calculating the scores from the last race'
     )
     standings = points_calculator.leaderboard()
+
+    for index, standing in enumerate(standings):
+        for name, score in standing.items():
+            em.add_field(name = f'{index + 1}: {name}', value = f'{score}', inline=False)
+    await ctx.channel.send(embed=em)
+
+@bot.command("seasonLeaders")
+async def leaderboard(ctx):
+    em = discord.Embed(
+    title = f'Season Leaderboard',
+    description = 'Leaders from Last Season'
+    )
+    standings = points_calculator.season_leaderboard()
 
     for index, standing in enumerate(standings):
         for name, score in standing.items():
